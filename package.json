@@ -1,0 +1,12 @@
+{
+  "name": "girassol-corrigir-nfs",
+  "version": "1.0.0",
+  "description": "Girassol - Corrigir NFs pendentes com erro de município",
+  "main": "index.js",
+  "engines": { "node": ">=18" },
+  "scripts": { "start": "node index.js" },
+  "dependencies": {
+    "node-cron": "^3.0.3",
+    "node-fetch": "^2.7.0"
+  }
+}
