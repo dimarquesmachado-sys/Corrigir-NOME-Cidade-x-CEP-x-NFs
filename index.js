@@ -39,12 +39,7 @@ function readBody(req) {
   });
 }
 
-// ════════════════════════════════════════════════════════════════
-//  LÓGICA PRINCIPAL
-// ════════════════════════════════════════════════════════════════
-
 const ERRO_MUNICIPIO = 'cMun';
-
 let _rodando = false;
 
 async function corrigirNFsPendentes() {
@@ -73,38 +68,21 @@ async function corrigirNFsPendentes() {
         const msgErro = detalhe.situacao?.valor || '';
         console.log(`[corrigir] NF ${nf.id} | erro: "${String(msgErro).slice(0, 100)}"`);
 
-        // ── Erro de município ──────────────────────────────────
         if (String(msgErro).includes(ERRO_MUNICIPIO)) {
           const idContato = detalhe.contato?.id;
-          if (!idContato) {
-            console.log(`[corrigir] NF ${nf.id} sem contato — ignorando`);
-            ignoradas++;
-            continue;
-          }
+          if (!idContato) { ignoradas++; continue; }
 
           const contato = await getContato(token, idContato);
-          if (!contato) {
-            console.log(`[corrigir] Contato ${idContato} não encontrado — ignorando`);
-            ignoradas++;
-            continue;
-          }
+          if (!contato) { ignoradas++; continue; }
 
           const cep = contato.endereco?.cep;
-          if (!cep) {
-            console.log(`[corrigir] NF ${nf.id} sem CEP no contato — ignorando`);
-            ignoradas++;
-            continue;
-          }
+          if (!cep) { ignoradas++; continue; }
 
           const novaCidade = await getCidadePorCEP(cep);
-          if (!novaCidade) {
-            console.log(`[corrigir] CEP ${cep} não encontrado no ViaCEP — ignorando`);
-            ignoradas++;
-            continue;
-          }
+          if (!novaCidade) { ignoradas++; continue; }
 
           const cidadeAtual = contato.endereco?.municipio || '';
-          console.log(`[corrigir] NF ${nf.id} | CEP ${cep} | "${cidadeAtual}" → "${novaCidade}"`);
+          console.log(`[corrigir] NF ${nf.id} | CEP ${cep} | "${cidadeAtual}" -> "${novaCidade}"`);
 
           await atualizarCidadeContato(token, idContato, contato, novaCidade);
           await sleep(500);
@@ -112,14 +90,11 @@ async function corrigirNFsPendentes() {
           corrigidas++;
 
         } else {
-          console.log(`[corrigir] NF ${nf.id} erro não tratado — ignorando`);
           ignoradas++;
         }
 
       } catch (e) {
-        if (e.code === 401 || e.message === 'TOKEN_EXPIRADO') {
-          token = await renovarToken();
-        }
+        if (e.code === 401 || e.message === 'TOKEN_EXPIRADO') token = await renovarToken();
         console.error(`[corrigir] Erro na NF ${nf.id}:`, e.message);
         erros++;
       }
@@ -134,15 +109,10 @@ async function corrigirNFsPendentes() {
   }
 }
 
-// ── Cron: a cada 30 min das 06h às 23h ──────────────────────────
-cron.schedule('*/30 6-23 * * *', () => {
+cron.schedule('*/5 6-23 * * *', () => {
   console.log(`\n[CRON] Corrigir NFs ${ts()}`);
   corrigirNFsPendentes().catch(e => console.error('[CRON] erro:', e.message));
 }, { timezone: TZ });
-
-// ════════════════════════════════════════════════════════════════
-//  HTTP SERVER
-// ════════════════════════════════════════════════════════════════
 
 const server = http.createServer(async (req, res) => {
   const { method, url } = req;
@@ -155,7 +125,7 @@ const server = http.createServer(async (req, res) => {
     const body = await readBody(req);
     try {
       await gerarTokenInicial(body.auth_code);
-      return json(res, 200, { ok: true, message: 'Tokens gerados e salvos ✓' });
+      return json(res, 200, { ok: true, message: 'Tokens gerados e salvos' });
     } catch (e) {
       return json(res, 400, { ok: false, error: e.message });
     }
@@ -165,7 +135,8 @@ const server = http.createServer(async (req, res) => {
     corrigirNFsPendentes().catch(console.error);
     return json(res, 202, { queued: 'corrigirNFsPendentes' });
   }
-if (url === '/setup-token' && method === 'POST') {
+
+  if (url === '/setup-token' && method === 'POST') {
     const body = await readBody(req);
     try {
       const fs = require('fs');
@@ -174,20 +145,16 @@ if (url === '/setup-token' && method === 'POST') {
       const dir = path.dirname(tokenFile);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(tokenFile, JSON.stringify({ access_token: body.access_token, refresh_token: body.refresh_token || '' }, null, 2));
-      return json(res, 200, { ok: true, message: 'Token salvo ✓' });
+      return json(res, 200, { ok: true, message: 'Token salvo' });
     } catch (e) {
       return json(res, 500, { ok: false, error: e.message });
     }
   }
-  json(res, 404, { error: 'not found' });
-});
 
-if (method === 'GET' && url.startsWith('/debug/nf/')) {
+  if (method === 'GET' && url.startsWith('/debug/nf/')) {
     const partes = url.split('/');
     const idNF = partes[partes.length - 1];
     try {
-      const { getNFDetalhe } = require('./blingApi');
-      const { garantirToken } = require('./tokenManager');
       const token = await garantirToken();
       const detalhe = await getNFDetalhe(token, idNF);
       return json(res, 200, detalhe);
@@ -195,6 +162,9 @@ if (method === 'GET' && url.startsWith('/debug/nf/')) {
       return json(res, 500, { error: e.message });
     }
   }
+
+  json(res, 404, { error: 'not found' });
+});
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`\n🌐 HTTP ouvindo na porta ${PORT}`));
