@@ -56,42 +56,51 @@ async function corrigirNFsPendentes() {
     }
 
     const nfs = await getNFsPendentes(token);
-    console.log(`[corrigir] ${nfs.length} NFs pendentes encontradas`);
+    console.log(`[corrigir] ${nfs.length} NFs com erro encontradas hoje`);
 
-    let corrigidas = 0, erros = 0, ignoradas = 0;
+    let corrigidas = 0, ignoradas = 0, erros = 0;
+    const agora = new Date();
 
     for (const nf of nfs) {
       try {
+        // Filtra NFs com mais de 5 minutos
+        const dataEmissao = new Date(nf.dataEmissao || nf.data);
+        const minutos = (agora - dataEmissao) / 1000 / 60;
+        if (minutos < 5) {
+          console.log(`[corrigir] NF ${nf.id} tem ${minutos.toFixed(1)} min — aguardando`);
+          ignoradas++;
+          continue;
+        }
+
         const detalhe = await getNFDetalhe(token, nf.id);
         if (!detalhe) { ignoradas++; continue; }
 
-        const msgErro = detalhe.situacao?.valor || '';
-        console.log(`[corrigir] NF ${nf.id} | erro: "${String(msgErro).slice(0, 100)}"`);
+        const idContato = detalhe.contato?.id;
+        const cep = detalhe.contato?.endereco?.cep;
 
-        if (String(msgErro).includes(ERRO_MUNICIPIO)) {
-          const idContato = detalhe.contato?.id;
-          if (!idContato) { ignoradas++; continue; }
-
-          const contato = await getContato(token, idContato);
-          if (!contato) { ignoradas++; continue; }
-
-          const cep = contato.endereco?.cep;
-          if (!cep) { ignoradas++; continue; }
-
-          const novaCidade = await getCidadePorCEP(cep);
-          if (!novaCidade) { ignoradas++; continue; }
-
-          const cidadeAtual = contato.endereco?.municipio || '';
-          console.log(`[corrigir] NF ${nf.id} | CEP ${cep} | "${cidadeAtual}" -> "${novaCidade}"`);
-
-          await atualizarCidadeContato(token, idContato, contato, novaCidade);
-          await sleep(500);
-          await enviarNF(token, nf.id);
-          corrigidas++;
-
-        } else {
+        if (!idContato || !cep) {
+          console.log(`[corrigir] NF ${nf.id} sem contato/CEP — ignorando`);
           ignoradas++;
+          continue;
         }
+
+        const novaCidade = await getCidadePorCEP(cep);
+        if (!novaCidade) {
+          console.log(`[corrigir] CEP ${cep} não encontrado — ignorando`);
+          ignoradas++;
+          continue;
+        }
+
+        const contato = await getContato(token, idContato);
+        if (!contato) { ignoradas++; continue; }
+
+        const cidadeAtual = contato.endereco?.municipio || '';
+        console.log(`[corrigir] NF ${nf.id} | CEP ${cep} | "${cidadeAtual}" → "${novaCidade}"`);
+
+        await atualizarCidadeContato(token, idContato, contato, novaCidade);
+        await sleep(500);
+        await enviarNF(token, nf.id);
+        corrigidas++;
 
       } catch (e) {
         if (e.code === 401 || e.message === 'TOKEN_EXPIRADO') token = await renovarToken();
