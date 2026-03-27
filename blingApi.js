@@ -33,12 +33,13 @@ async function fetchComRetry(url, options, ctx, tentativas = 4) {
 // ── NFs ──────────────────────────────────────────────────────────
 
 async function getNFsPendentes(token) {
-  // situacao 0 = pendente
-  const url = `${BLING_API}/nfe?situacao=0&limite=100&pagina=1`;
+  // situacao 5 = erro no envio
+  const hoje = new Date().toISOString().split('T')[0];
+  const url = `${BLING_API}/nfe?situacao=5&limite=100&pagina=1&dataEmissaoInicial=${hoje}&dataEmissaoFinal=${hoje}`;
   const resp = await fetchComRetry(
     url,
     { headers: { Authorization: `Bearer ${token}` } },
-    'listar NFs pendentes'
+    'listar NFs com erro'
   );
   const data = await resp.json();
   return data.data || [];
