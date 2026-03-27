@@ -165,7 +165,20 @@ const server = http.createServer(async (req, res) => {
     corrigirNFsPendentes().catch(console.error);
     return json(res, 202, { queued: 'corrigirNFsPendentes' });
   }
-
+if (url === '/setup-token' && method === 'POST') {
+    const body = await readBody(req);
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const tokenFile = process.env.TOKEN_FILE || '/data/tokens.json';
+      const dir = path.dirname(tokenFile);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(tokenFile, JSON.stringify({ access_token: body.access_token, refresh_token: body.refresh_token || '' }, null, 2));
+      return json(res, 200, { ok: true, message: 'Token salvo ✓' });
+    } catch (e) {
+      return json(res, 500, { ok: false, error: e.message });
+    }
+  }
   json(res, 404, { error: 'not found' });
 });
 
