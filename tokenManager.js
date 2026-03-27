@@ -6,8 +6,6 @@ const fetch = require('node-fetch');
 
 const TOKEN_FILE = process.env.TOKEN_FILE || path.join(__dirname, 'data', 'tokens.json');
 
-// ── I/O ───────────────────────────────────────────────────────────────
-
 function lerTokens() {
   try {
     if (!fs.existsSync(TOKEN_FILE)) return {};
@@ -24,8 +22,6 @@ function salvarTokens(access_token, refresh_token) {
   fs.writeFileSync(TOKEN_FILE, JSON.stringify({ access_token, refresh_token }, null, 2));
   console.log('[tokenManager] Tokens salvos em disco ✓');
 }
-
-// ── OAuth helpers ────────────────────────────────────────────────────
 
 function basicAuth() {
   const id  = process.env.BLING_CLIENT_ID;
@@ -49,8 +45,6 @@ async function postOAuth(body) {
   return data;
 }
 
-// ── Gerar token inicial (uma vez) ─────────────────────────────────────
-
 async function gerarTokenInicial(auth_code) {
   if (!auth_code) throw new Error('auth_code obrigatório');
   const redirect_uri = process.env.BLING_REDIRECT_URI || '';
@@ -59,13 +53,10 @@ async function gerarTokenInicial(auth_code) {
   return { ok: true };
 }
 
-// ── Renovar token ─────────────────────────────────────────────────────
-
-let _renovando = false; // evita refresh duplo simultâneo
+let _renovando = false;
 
 async function renovarToken() {
   if (_renovando) {
-    // Aguarda o refresh em andamento
     await new Promise(r => setTimeout(r, 2000));
     return lerTokens().access_token;
   }
@@ -83,8 +74,6 @@ async function renovarToken() {
     _renovando = false;
   }
 }
-
-// ── Garantir token válido ────────────────────────────────────────────
 
 async function garantirToken() {
   const { access_token } = lerTokens();
@@ -107,19 +96,3 @@ async function garantirToken() {
 }
 
 module.exports = { garantirToken, renovarToken, gerarTokenInicial };
-Extension
-Extension Embed
-
-
-
-Actions
-
-Your Business
-
-Settings
-
-Help
-Search Amazon
-
-United States
-Search Amazon
