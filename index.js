@@ -182,6 +182,20 @@ if (url === '/setup-token' && method === 'POST') {
   json(res, 404, { error: 'not found' });
 });
 
+if (method === 'GET' && url.startsWith('/debug/nf/')) {
+    const partes = url.split('/');
+    const idNF = partes[partes.length - 1];
+    try {
+      const { getNFDetalhe } = require('./blingApi');
+      const { garantirToken } = require('./tokenManager');
+      const token = await garantirToken();
+      const detalhe = await getNFDetalhe(token, idNF);
+      return json(res, 200, detalhe);
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`\n🌐 HTTP ouvindo na porta ${PORT}`));
 
