@@ -5,15 +5,15 @@ const cron  = require('node-cron');
 const { garantirToken, renovarToken, gerarTokenInicial } = require('./tokenManager');
 const {
   sleep,
-  getNFsPendentes, getNFDetalhe, enviarNF,
-  getContato, atualizarCidadeContato,
-  getCidadePorCEP
+  getNFsParaCorrigir, getNFDetalhe, enviarNF,
+  getContato, atualizarCidadeContato, atualizarIEContato,
+  getCidadePorCEP, getIEPorCNPJ
 } = require('./blingApi');
 
 const TZ = process.env.TZ || 'America/Sao_Paulo';
 
 console.log('╔══════════════════════════════════════════╗');
-console.log('║  Girassol - Corrigir NFs v1.0             ║');
+console.log('║  Girassol - Corrigir NFs v2.0             ║');
 console.log('╚══════════════════════════════════════════╝');
 console.log('Timezone:', TZ);
 console.log('Iniciado:', new Date().toLocaleString('pt-BR', { timeZone: TZ }));
@@ -39,7 +39,6 @@ function readBody(req) {
   });
 }
 
-const ERRO_MUNICIPIO = 'cMun';
 let _rodando = false;
 
 async function corrigirNFsPendentes() {
@@ -55,15 +54,15 @@ async function corrigirNFsPendentes() {
       else throw e;
     }
 
-    const nfs = await getNFsPendentes(token);
-    console.log(`[corrigir] ${nfs.length} NFs com erro encontradas hoje`);
+    const nfs = await getNFsParaCorrigir(token);
+    console.log(`[corrigir] ${nfs.length} NFs para verificar hoje`);
 
     let corrigidas = 0, ignoradas = 0, erros = 0;
     const agora = new Date();
 
     for (const nf of nfs) {
       try {
-        // Filtra NFs com mais de 5 minutos
+        // Filtra NFs com menos de 5 minutos
         const dataEmissao = new Date(nf.dataEmissao || nf.data);
         const minutos = (agora - dataEmissao) / 1000 / 60;
         if (minutos < 5) {
@@ -77,30 +76,56 @@ async function corrigirNFsPendentes() {
 
         const idContato = detalhe.contato?.id;
         const cep = detalhe.contato?.endereco?.cep;
+        const uf = detalhe.contato?.endereco?.uf;
+        const cnpj = detalhe.contato?.numeroDocumento || '';
+        const ie = detalhe.contato?.ie || '';
+        const isPJ = cnpj.replace(/\D/g, '').length === 14;
 
-        if (!idContato || !cep) {
-          console.log(`[corrigir] NF ${nf.id} sem contato/CEP — ignorando`);
-          ignoradas++;
-          continue;
-        }
+        console.log(`[corrigir] NF ${nf.id} | situacao=${nf.situacao} | PJ=${isPJ} | IE="${ie}" | CEP=${cep} | UF=${uf}`);
 
-        const novaCidade = await getCidadePorCEP(cep);
-        if (!novaCidade) {
-          console.log(`[corrigir] CEP ${cep} não encontrado — ignorando`);
-          ignoradas++;
-          continue;
-        }
+        if (!idContato) { ignoradas++; continue; }
 
         const contato = await getContato(token, idContato);
         if (!contato) { ignoradas++; continue; }
 
-        const cidadeAtual = contato.endereco?.municipio || '';
-        console.log(`[corrigir] NF ${nf.id} | CEP ${cep} | "${cidadeAtual}" → "${novaCidade}"`);
+        let corrigiu = false;
 
-        await atualizarCidadeContato(token, idContato, contato, novaCidade);
-        await sleep(500);
-        await enviarNF(token, nf.id);
-        corrigidas++;
+        // ── Corrigir cidade ──────────────────────────────────
+        if (cep) {
+          const novaCidade = await getCidadePorCEP(cep);
+          const cidadeAtual = contato.endereco?.municipio || '';
+          if (novaCidade && novaCidade.toLowerCase() !== cidadeAtual.toLowerCase()) {
+            console.log(`[corrigir] NF ${nf.id} | CEP ${cep} | "${cidadeAtual}" -> "${novaCidade}"`);
+            await atualizarCidadeContato(token, idContato, contato, novaCidade);
+            // Atualiza objeto local para usar na próxima etapa
+            contato.endereco = { ...contato.endereco, municipio: novaCidade };
+            corrigiu = true;
+            await sleep(300);
+          }
+        }
+
+        // ── Corrigir IE (só PJ sem IE) ────────────────────────
+        if (isPJ && !ie && uf) {
+          const cnpjLimpo = cnpj.replace(/\D/g, '');
+          const resultado = await getIEPorCNPJ(cnpjLimpo, uf);
+          if (resultado) {
+            console.log(`[corrigir] NF ${nf.id} | IE encontrada: "${resultado.ie}" contribuinte=${resultado.contribuinte}`);
+            await atualizarIEContato(token, idContato, contato, resultado.ie, resultado.contribuinte);
+            corrigiu = true;
+            await sleep(300);
+          } else {
+            console.log(`[corrigir] NF ${nf.id} | IE não encontrada no SintegraWS — intervenção manual necessária`);
+          }
+        }
+
+        // ── Reenviar NF se corrigiu algo ──────────────────────
+        if (corrigiu) {
+          await sleep(500);
+          await enviarNF(token, nf.id);
+          corrigidas++;
+        } else {
+          ignoradas++;
+        }
 
       } catch (e) {
         if (e.code === 401 || e.message === 'TOKEN_EXPIRADO') token = await renovarToken();
@@ -118,10 +143,15 @@ async function corrigirNFsPendentes() {
   }
 }
 
+// ── Cron: a cada 5 min das 06h às 23h ───────────────────────────
 cron.schedule('*/5 6-23 * * *', () => {
   console.log(`\n[CRON] Corrigir NFs ${ts()}`);
   corrigirNFsPendentes().catch(e => console.error('[CRON] erro:', e.message));
 }, { timezone: TZ });
+
+// ════════════════════════════════════════════════════════════════
+//  HTTP SERVER
+// ════════════════════════════════════════════════════════════════
 
 const server = http.createServer(async (req, res) => {
   const { method, url } = req;

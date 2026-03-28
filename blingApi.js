@@ -4,6 +4,7 @@ const fetch = require('node-fetch');
 
 const BLING_API = 'https://www.bling.com.br/Api/v3';
 const PAUSA_MS = parseInt(process.env.PAUSA_MS || '700');
+const SINTEGRA_TOKEN = process.env.SINTEGRA_TOKEN || '';
 
 let _ultimaReq = 0;
 
@@ -32,17 +33,23 @@ async function fetchComRetry(url, options, ctx, tentativas = 4) {
 
 // ── NFs ──────────────────────────────────────────────────────────
 
-async function getNFsPendentes(token) {
-  // situacao 5 = erro no envio
+async function getNFsParaCorrigir(token) {
   const hoje = new Date().toISOString().split('T')[0];
-  const url = `${BLING_API}/nfe?situacao=5&limite=100&pagina=1&dataEmissaoInicial=${hoje}&dataEmissaoFinal=${hoje}`;
-  const resp = await fetchComRetry(
-    url,
-    { headers: { Authorization: `Bearer ${token}` } },
-    'listar NFs com erro'
-  );
-  const data = await resp.json();
-  return data.data || [];
+  const situacoes = [1, 4, 5]; // 1=pendente, 4=rejeitada, 5=erro
+  let todas = [];
+
+  for (const sit of situacoes) {
+    const url = `${BLING_API}/nfe?situacao=${sit}&limite=100&pagina=1&dataEmissaoInicial=${hoje}&dataEmissaoFinal=${hoje}`;
+    const resp = await fetchComRetry(
+      url,
+      { headers: { Authorization: `Bearer ${token}` } },
+      `listar NFs situacao=${sit}`
+    );
+    const data = await resp.json();
+    todas = todas.concat(data.data || []);
+  }
+
+  return todas;
 }
 
 async function getNFDetalhe(token, idNF) {
@@ -67,7 +74,7 @@ async function enviarNF(token, idNF) {
     },
     `enviar NF=${idNF}`
   );
-  console.log(`[blingApi] NF ${idNF} enviada para SEFAZ ✓`);
+  console.log(`[blingApi] NF ${idNF} enviada para SEFAZ`);
 }
 
 // ── Contatos ──────────────────────────────────────────────────────
@@ -101,7 +108,26 @@ async function atualizarCidadeContato(token, idContato, contatoCompleto, novaCid
     },
     `atualizar cidade contato=${idContato}`
   );
-  console.log(`[blingApi] Contato ${idContato} cidade atualizada para "${novaCidade}" ✓`);
+  console.log(`[blingApi] Contato ${idContato} cidade atualizada para "${novaCidade}"`);
+}
+
+async function atualizarIEContato(token, idContato, contatoCompleto, ie, contribuinte) {
+  const url = `${BLING_API}/contatos/${idContato}`;
+  const payload = {
+    ...contatoCompleto,
+    ie: ie,
+    contribuinte: contribuinte
+  };
+  await fetchComRetry(
+    url,
+    {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    },
+    `atualizar IE contato=${idContato}`
+  );
+  console.log(`[blingApi] Contato ${idContato} IE atualizada para "${ie}" contribuinte=${contribuinte}`);
 }
 
 // ── ViaCEP ────────────────────────────────────────────────────────
@@ -121,9 +147,51 @@ async function getCidadePorCEP(cep) {
   }
 }
 
+// ── SintegraWS ────────────────────────────────────────────────────
+
+async function getIEPorCNPJ(cnpj, uf) {
+  if (!SINTEGRA_TOKEN) {
+    console.log('[blingApi] SINTEGRA_TOKEN não configurado');
+    return null;
+  }
+  const cnpjLimpo = String(cnpj).replace(/\D/g, '');
+  try {
+    const url = `https://www.sintegraws.com.br/api/v1/execute-api.php?token=${SINTEGRA_TOKEN}&cnpj=${cnpjLimpo}&plugin=ST`;
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      console.log(`[blingApi] SintegraWS HTTP ${resp.status}`);
+      return null;
+    }
+    const data = await resp.json();
+    console.log(`[blingApi] SintegraWS CNPJ=${cnpjLimpo} UF=${uf}:`, JSON.stringify(data).slice(0, 200));
+
+    // Busca IE para o estado correto
+    if (data && data.inscricoes_estaduais) {
+      const ieEstado = data.inscricoes_estaduais.find(i => i.uf === uf);
+      if (ieEstado && ieEstado.inscricao_estadual && ieEstado.inscricao_estadual !== 'ISENTO') {
+        return { ie: ieEstado.inscricao_estadual, contribuinte: 1 };
+      }
+      if (ieEstado && ieEstado.inscricao_estadual === 'ISENTO') {
+        return { ie: 'ISENTO', contribuinte: 2 };
+      }
+    }
+
+    // Fallback: campo direto
+    if (data && data.inscricao_estadual) {
+      if (data.inscricao_estadual === 'ISENTO') return { ie: 'ISENTO', contribuinte: 2 };
+      return { ie: data.inscricao_estadual, contribuinte: 1 };
+    }
+
+    return null;
+  } catch (e) {
+    console.error('[blingApi] Erro SintegraWS:', e.message);
+    return null;
+  }
+}
+
 module.exports = {
   sleep,
-  getNFsPendentes, getNFDetalhe, enviarNF,
-  getContato, atualizarCidadeContato,
-  getCidadePorCEP
+  getNFsParaCorrigir, getNFDetalhe, enviarNF,
+  getContato, atualizarCidadeContato, atualizarIEContato,
+  getCidadePorCEP, getIEPorCNPJ
 };
