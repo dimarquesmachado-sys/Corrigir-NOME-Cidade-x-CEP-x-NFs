@@ -201,6 +201,15 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (method === 'GET' && url === '/debug/token') {
+    try {
+      const token = await garantirToken();
+      return json(res, 200, { token });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+  
   json(res, 404, { error: 'not found' });
 });
 
