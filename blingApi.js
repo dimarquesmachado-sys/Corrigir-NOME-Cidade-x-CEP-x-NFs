@@ -34,19 +34,24 @@ async function fetchComRetry(url, options, ctx, tentativas = 4) {
 // ── NFs ──────────────────────────────────────────────────────────
 
 async function getNFsParaCorrigir(token) {
-  const hoje = new Date().toISOString().split('T')[0];
   const situacoes = [1, 4, 5]; // 1=pendente, 4=rejeitada, 5=erro
+  const ontem = new Date(Date.now() - 24*60*60*1000);
   let todas = [];
 
   for (const sit of situacoes) {
-    const url = `${BLING_API}/nfe?situacao=${sit}&limite=100&pagina=1&dataEmissaoInicial=${hoje}&dataEmissaoFinal=${hoje}`;
+    const url = `${BLING_API}/nfe?situacao=${sit}&limite=100&pagina=1`;
     const resp = await fetchComRetry(
       url,
       { headers: { Authorization: `Bearer ${token}` } },
       `listar NFs situacao=${sit}`
     );
     const data = await resp.json();
-    todas = todas.concat(data.data || []);
+    // Filtra apenas NFs das últimas 24h
+    const recentes = (data.data || []).filter(nf => {
+      const dataEmissao = new Date(nf.dataEmissao || nf.data);
+      return dataEmissao >= ontem;
+    });
+    todas = todas.concat(recentes);
   }
 
   return todas;
