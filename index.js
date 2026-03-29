@@ -56,6 +56,7 @@ async function corrigirNFsPendentes() {
     }
 
     const nfs = await getNFsParaCorrigir(token);
+    console.log('[debug] IDs na listagem:', nfs.map(n => `${n.id}(sit=${n.situacao})`).join(', '));
     console.log(`[corrigir] ${nfs.length} NFs para verificar`);
 
     let corrigidas = 0, ignoradas = 0, erros = 0;
