@@ -78,12 +78,15 @@ async function corrigirNFsPendentes() {
           continue;
         }
 
-        // Se NF já autorizada — ignora
-if (detalhe.situacao === 2) {
-  _nfsProcessadas.add(nf.id);
-  ignoradas++;
-  continue;
-}
+        const detalhe = await getNFDetalhe(token, nf.id);
+        if (!detalhe) { _nfsProcessadas.add(nf.id); ignoradas++; continue; }
+
+        // Se tem chave de acesso, NF já foi autorizada — ignora e marca como processada
+        if (detalhe.chaveAcesso && detalhe.chaveAcesso.length > 0) {
+          _nfsProcessadas.add(nf.id);
+          ignoradas++;
+          continue;
+        }
 
         const idContato = detalhe.contato?.id;
         const cep = detalhe.contato?.endereco?.cep;
