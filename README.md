@@ -6,7 +6,7 @@ Serviço Node.js hospedado no Render que monitora e corrige automaticamente Nota
 
 ## O que o serviço faz
 
-A cada **5 minutos** (das 06h às 23h), o serviço busca NFs com erro nas últimas 72h e tenta corrigir automaticamente os seguintes problemas:
+A cada **5 minutos** (das 06h às 23h), o serviço busca NFs com erro nas últimas 24h e tenta corrigir automaticamente os seguintes problemas:
 
 ### 1. Cidade inválida (erro `cMun`)
 O cliente cadastrou uma cidade que não existe no IBGE (ex: "Sabiaguaba", "Arraial da Ajuda", "Parati"). O serviço:
