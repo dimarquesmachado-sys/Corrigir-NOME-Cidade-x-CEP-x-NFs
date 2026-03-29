@@ -75,10 +75,10 @@ async function corrigirNFsPendentes() {
         if (!detalhe) { ignoradas++; continue; }
 
         // Se NF já autorizada (situacao=2) — ignora
-        if (detalhe.situacao === 2) {
-          ignoradas++;
-          continue;
-        }
+        if (detalhe.situacao === 2) { ignoradas++; continue; }
+
+        // Se tem XML gerado, NF já foi autorizada — ignora
+        if (detalhe.xml && detalhe.xml.length > 0) { ignoradas++; continue; }
 
         const idContato = detalhe.contato?.id;
         const cep = detalhe.contato?.endereco?.cep;
@@ -117,12 +117,10 @@ async function corrigirNFsPendentes() {
           const resultado = await getIEPorCNPJ(cnpjLimpo, uf);
           if (resultado) {
             console.log(`[corrigir] NF ${nf.id} | IE: "${resultado.ie}" contribuinte=${resultado.contribuinte}`);
-            // Atualiza contato no Bling
             const contato = await getContato(token, idContato);
             if (contato) {
               await atualizarIEContato(token, idContato, contato, resultado.ie, resultado.contribuinte);
             }
-            // Atualiza também no detalhe da NF para o PUT
             detalhe.contato.ie = resultado.ie;
             detalhe.contato.contribuinte = resultado.contribuinte;
             corrigiu = true;
@@ -159,15 +157,10 @@ async function corrigirNFsPendentes() {
   }
 }
 
-// ── Cron: a cada 5 min das 06h às 23h ───────────────────────────
 cron.schedule('*/5 6-23 * * *', () => {
   console.log(`\n[CRON] Corrigir NFs ${ts()}`);
   corrigirNFsPendentes().catch(e => console.error('[CRON] erro:', e.message));
 }, { timezone: TZ });
-
-// ════════════════════════════════════════════════════════════════
-//  HTTP SERVER
-// ════════════════════════════════════════════════════════════════
 
 const server = http.createServer(async (req, res) => {
   const { method, url } = req;

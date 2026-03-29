@@ -33,11 +33,9 @@ async function fetchComRetry(url, options, ctx, tentativas = 4) {
   }
 }
 
-// ── NFs ──────────────────────────────────────────────────────────
-
 async function getNFsParaCorrigir(token) {
-  const situacoes = [1, 4, 5]; // 1=pendente, 4=rejeitada, 5=erro
-const ontem = new Date(Date.now() - 24*60*60*1000);
+  const situacoes = [1, 4, 5];
+  const ontem = new Date(Date.now() - 72*60*60*1000);
   let todas = [];
 
   for (const sit of situacoes) {
@@ -70,13 +68,13 @@ async function getNFDetalhe(token, idNF) {
 }
 
 async function salvarNF(token, idNF, detalhe) {
-  // Monta payload preservando todos os dados e adicionando intermediador fixo
   const payload = {
     ...detalhe,
     intermediador: {
       cnpj: INTERMEDIADOR_CNPJ,
       nomeUsuario: INTERMEDIADOR_NOME
-    }
+    },
+    parcelas: [] // Remove parcelas para evitar erro de divergência
   };
 
   const url = `${BLING_API}/nfe/${idNF}`;
@@ -126,8 +124,6 @@ async function enviarNF(token, idNF) {
   throw new Error(`API Bling (enviar NF=${idNF}) HTTP ${resp.status}`);
 }
 
-// ── Contatos ──────────────────────────────────────────────────────
-
 async function getContato(token, idContato) {
   const url = `${BLING_API}/contatos/${idContato}`;
   const resp = await fetchComRetry(
@@ -154,8 +150,6 @@ async function atualizarIEContato(token, idContato, contatoCompleto, ie, contrib
   console.log(`[blingApi] Contato ${idContato} IE="${ie}" contribuinte=${contribuinte}`);
 }
 
-// ── ViaCEP ────────────────────────────────────────────────────────
-
 async function getCidadePorCEP(cep) {
   const cepLimpo = String(cep).replace(/\D/g, '');
   if (cepLimpo.length !== 8) return null;
@@ -170,8 +164,6 @@ async function getCidadePorCEP(cep) {
     return null;
   }
 }
-
-// ── SintegraWS ────────────────────────────────────────────────────
 
 async function getIEPorCNPJ(cnpj, uf) {
   if (!SINTEGRA_TOKEN) {
