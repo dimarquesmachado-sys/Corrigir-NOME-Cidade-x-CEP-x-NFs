@@ -40,11 +40,11 @@ function readBody(req) {
 }
 
 let _rodando = false;
-[´-p0987654r3\
+
 async function corrigirNFsPendentes() {
   if (_rodando) { console.log('[corrigir] Já em execução — pulando'); return; }
   _rodando = true;
-const _nfsProcessadas = new Set();
+  const _nfsProcessadas = new Set();
 
   try {
     let token;
