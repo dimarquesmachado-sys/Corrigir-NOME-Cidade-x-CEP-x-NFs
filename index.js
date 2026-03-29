@@ -40,6 +40,7 @@ function readBody(req) {
 }
 
 let _rodando = false;
+const _nfsProcessadas = new Set(); // IDs já processados nesta sessão
 
 async function corrigirNFsPendentes() {
   if (_rodando) { console.log('[corrigir] Já em execução — pulando'); return; }
@@ -62,6 +63,12 @@ async function corrigirNFsPendentes() {
 
     for (const nf of nfs) {
       try {
+        // Já processada nesta sessão — pula
+        if (_nfsProcessadas.has(nf.id)) {
+          ignoradas++;
+          continue;
+        }
+
         // Filtra NFs com menos de 5 minutos
         const dataEmissao = new Date(nf.dataEmissao || nf.data);
         const minutos = (agora - dataEmissao) / 1000 / 60;
@@ -72,13 +79,15 @@ async function corrigirNFsPendentes() {
         }
 
         const detalhe = await getNFDetalhe(token, nf.id);
-        if (!detalhe) { ignoradas++; continue; }
-        
-// Se tem chave de acesso, NF já foi autorizada — ignora
-if (detalhe.chaveAcesso && detalhe.chaveAcesso.length > 0) {
-  ignoradas++;
-  continue;
-}
+        if (!detalhe) { _nfsProcessadas.add(nf.id); ignoradas++; continue; }
+
+        // Se tem chave de acesso, NF já foi autorizada — ignora e marca como processada
+        if (detalhe.chaveAcesso && detalhe.chaveAcesso.length > 0) {
+          _nfsProcessadas.add(nf.id);
+          ignoradas++;
+          continue;
+        }
+
         const idContato = detalhe.contato?.id;
         const cep = detalhe.contato?.endereco?.cep;
         const uf = detalhe.contato?.endereco?.uf;
@@ -96,7 +105,6 @@ if (detalhe.chaveAcesso && detalhe.chaveAcesso.length > 0) {
           const cidadeAtual = detalhe.contato?.endereco?.municipio || '';
           if (novaCidade && novaCidade.toLowerCase() !== cidadeAtual.toLowerCase()) {
             console.log(`[corrigir] NF ${nf.id} | "${cidadeAtual}" -> "${novaCidade}"`);
-            // Atualiza cidade no detalhe da NF
             detalhe.contato.endereco.municipio = novaCidade;
             corrigiu = true;
           }
@@ -129,6 +137,9 @@ if (detalhe.chaveAcesso && detalhe.chaveAcesso.length > 0) {
         } else {
           ignoradas++;
         }
+
+        // Marca como processada para não repetir
+        _nfsProcessadas.add(nf.id);
 
       } catch (e) {
         if (e.code === 401 || e.message === 'TOKEN_EXPIRADO') token = await renovarToken();
