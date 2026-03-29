@@ -37,7 +37,7 @@ async function fetchComRetry(url, options, ctx, tentativas = 4) {
 
 async function getNFsParaCorrigir(token) {
   const situacoes = [1, 4, 5]; // 1=pendente, 4=rejeitada, 5=erro
-  const ontem = new Date(Date.now() - 24*60*60*1000);
+const ontem = new Date(Date.now() - 24*60*60*1000);
   let todas = [];
 
   for (const sit of situacoes) {
