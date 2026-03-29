@@ -32,7 +32,7 @@ Quando o cliente preencheu o campo endereço com apenas 1 caractere (ex: "6"). O
 ## Fluxo técnico de correção
 
 ```
-1. GET /nfe?situacao={1,4,5} → lista NFs com erro das últimas 72h
+1. GET /nfe?situacao={1,4,5} → lista NFs com erro das últimas 24h
 2. Para cada NF:
    a. GET /nfe/{id} → busca detalhe completo
    b. Se tem XML gerado → já foi autorizada, ignora
