@@ -5,15 +5,15 @@ const cron  = require('node-cron');
 const { garantirToken, renovarToken, gerarTokenInicial } = require('./tokenManager');
 const {
   sleep,
-  getNFsParaCorrigir, getNFDetalhe, enviarNF,
-  getContato, atualizarCidadeContato, atualizarIEContato,
+  getNFsParaCorrigir, getNFDetalhe, salvarNF, enviarNF,
+  getContato, atualizarIEContato,
   getCidadePorCEP, getIEPorCNPJ
 } = require('./blingApi');
 
 const TZ = process.env.TZ || 'America/Sao_Paulo';
 
 console.log('╔══════════════════════════════════════════╗');
-console.log('║  Girassol - Corrigir NFs v2.0             ║');
+console.log('║  Girassol - Corrigir NFs v3.0             ║');
 console.log('╚══════════════════════════════════════════╝');
 console.log('Timezone:', TZ);
 console.log('Iniciado:', new Date().toLocaleString('pt-BR', { timeZone: TZ }));
@@ -55,7 +55,7 @@ async function corrigirNFsPendentes() {
     }
 
     const nfs = await getNFsParaCorrigir(token);
-    console.log(`[corrigir] ${nfs.length} NFs para verificar hoje`);
+    console.log(`[corrigir] ${nfs.length} NFs para verificar`);
 
     let corrigidas = 0, ignoradas = 0, erros = 0;
     const agora = new Date();
@@ -81,44 +81,43 @@ async function corrigirNFsPendentes() {
         const ie = detalhe.contato?.ie || '';
         const isPJ = cnpj.replace(/\D/g, '').length === 14;
 
-        console.log(`[corrigir] NF ${nf.id} | situacao=${nf.situacao} | PJ=${isPJ} | IE="${ie}" | CEP=${cep} | UF=${uf}`);
-
-        if (!idContato) { ignoradas++; continue; }
-
-        const contato = await getContato(token, idContato);
-        if (!contato) { ignoradas++; continue; }
+        console.log(`[corrigir] NF ${nf.id} | sit=${nf.situacao} | PJ=${isPJ} | IE="${ie}" | CEP=${cep} | UF=${uf}`);
 
         let corrigiu = false;
 
-        // ── Corrigir cidade ──────────────────────────────────
+        // ── Corrigir cidade na própria NF ────────────────────
         if (cep) {
           const novaCidade = await getCidadePorCEP(cep);
-          const cidadeAtual = contato.endereco?.municipio || '';
+          const cidadeAtual = detalhe.contato?.endereco?.municipio || '';
           if (novaCidade && novaCidade.toLowerCase() !== cidadeAtual.toLowerCase()) {
-            console.log(`[corrigir] NF ${nf.id} | CEP ${cep} | "${cidadeAtual}" -> "${novaCidade}"`);
-            await atualizarCidadeContato(token, idContato, contato, novaCidade);
-            contato.endereco = { ...contato.endereco, municipio: novaCidade };
+            console.log(`[corrigir] NF ${nf.id} | "${cidadeAtual}" -> "${novaCidade}"`);
+            // Atualiza cidade no detalhe da NF
+            detalhe.contato.endereco.municipio = novaCidade;
             corrigiu = true;
-            await sleep(300);
           }
         }
 
-        // ── Corrigir IE (só PJ sem IE) ────────────────────────
-        if (isPJ && !ie && uf) {
+        // ── Corrigir IE no contato (só PJ sem IE) ─────────────
+        if (isPJ && !ie && uf && idContato) {
           const cnpjLimpo = cnpj.replace(/\D/g, '');
           const resultado = await getIEPorCNPJ(cnpjLimpo, uf);
           if (resultado) {
             console.log(`[corrigir] NF ${nf.id} | IE: "${resultado.ie}" contribuinte=${resultado.contribuinte}`);
-            await atualizarIEContato(token, idContato, contato, resultado.ie, resultado.contribuinte);
-            corrigiu = true;
+            const contato = await getContato(token, idContato);
+            if (contato) {
+              await atualizarIEContato(token, idContato, contato, resultado.ie, resultado.contribuinte);
+              corrigiu = true;
+            }
             await sleep(300);
           } else {
-            console.log(`[corrigir] NF ${nf.id} | IE não encontrada — intervenção manual necessária`);
+            console.log(`[corrigir] NF ${nf.id} | IE não encontrada — intervenção manual`);
           }
         }
 
-        // ── Salvar e reenviar NF se corrigiu algo ─────────────
+        // ── Salvar NF (com intermediador) e enviar ────────────
         if (corrigiu) {
+          await sleep(300);
+          await salvarNF(token, nf.id, detalhe);
           await sleep(500);
           await enviarNF(token, nf.id);
           corrigidas++;
@@ -189,6 +188,15 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (method === 'GET' && url === '/debug/token') {
+    try {
+      const token = await garantirToken();
+      return json(res, 200, { token });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   if (method === 'GET' && url.startsWith('/debug/nf/')) {
     const partes = url.split('/');
     const idNF = partes[partes.length - 1];
@@ -201,15 +209,6 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  if (method === 'GET' && url === '/debug/token') {
-    try {
-      const token = await garantirToken();
-      return json(res, 200, { token });
-    } catch (e) {
-      return json(res, 500, { error: e.message });
-    }
-  }
-  
   json(res, 404, { error: 'not found' });
 });
 

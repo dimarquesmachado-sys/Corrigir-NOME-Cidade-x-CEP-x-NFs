@@ -5,6 +5,8 @@ const fetch = require('node-fetch');
 const BLING_API = 'https://www.bling.com.br/Api/v3';
 const PAUSA_MS = parseInt(process.env.PAUSA_MS || '700');
 const SINTEGRA_TOKEN = process.env.SINTEGRA_TOKEN || '';
+const INTERMEDIADOR_CNPJ = process.env.INTERMEDIADOR_CNPJ || '03007331000141';
+const INTERMEDIADOR_NOME = process.env.INTERMEDIADOR_NOME || 'MAGAZINEGIRASSOL';
 
 let _ultimaReq = 0;
 
@@ -68,31 +70,60 @@ async function getNFDetalhe(token, idNF) {
 }
 
 async function salvarNF(token, idNF, detalhe) {
+  // Monta payload preservando todos os dados e adicionando intermediador fixo
+  const payload = {
+    ...detalhe,
+    intermediador: {
+      cnpj: INTERMEDIADOR_CNPJ,
+      nomeUsuario: INTERMEDIADOR_NOME
+    }
+  };
+
   const url = `${BLING_API}/nfe/${idNF}`;
-  await fetchComRetry(
-    url,
-    {
-      method: 'PUT',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(detalhe)
+  const body = JSON.stringify(payload);
+  const resp = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(body)
     },
-    `salvar NF=${idNF}`
-  );
-  console.log(`[blingApi] NF ${idNF} salva`);
+    body
+  });
+
+  if (resp.status >= 200 && resp.status < 300) {
+    console.log(`[blingApi] NF ${idNF} salva`);
+    return;
+  }
+
+  if (resp.status === 401) throw Object.assign(new Error('TOKEN_EXPIRADO'), { code: 401 });
+  const txt = await resp.text();
+  console.error(`[blingApi] HTTP ${resp.status} em salvar NF=${idNF}:`, txt.slice(0, 300));
+  throw new Error(`API Bling (salvar NF=${idNF}) HTTP ${resp.status}`);
 }
 
 async function enviarNF(token, idNF) {
   const url = `${BLING_API}/nfe/${idNF}/enviar`;
-  await fetchComRetry(
-    url,
-    {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: '{}'
+  const body = '{}';
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(body)
     },
-    `enviar NF=${idNF}`
-  );
-  console.log(`[blingApi] NF ${idNF} enviada para SEFAZ`);
+    body
+  });
+
+  if (resp.status >= 200 && resp.status < 300) {
+    console.log(`[blingApi] NF ${idNF} enviada para SEFAZ`);
+    return;
+  }
+
+  if (resp.status === 401) throw Object.assign(new Error('TOKEN_EXPIRADO'), { code: 401 });
+  const txt = await resp.text();
+  console.error(`[blingApi] HTTP ${resp.status} em enviar NF=${idNF}:`, txt.slice(0, 300));
+  throw new Error(`API Bling (enviar NF=${idNF}) HTTP ${resp.status}`);
 }
 
 // ── Contatos ──────────────────────────────────────────────────────
@@ -108,34 +139,9 @@ async function getContato(token, idContato) {
   return data.data || null;
 }
 
-async function atualizarCidadeContato(token, idContato, contatoCompleto, novaCidade) {
-  const url = `${BLING_API}/contatos/${idContato}`;
-  const payload = {
-    ...contatoCompleto,
-    endereco: {
-      ...contatoCompleto.endereco,
-      municipio: novaCidade
-    }
-  };
-  await fetchComRetry(
-    url,
-    {
-      method: 'PUT',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    },
-    `atualizar cidade contato=${idContato}`
-  );
-  console.log(`[blingApi] Contato ${idContato} cidade atualizada para "${novaCidade}"`);
-}
-
 async function atualizarIEContato(token, idContato, contatoCompleto, ie, contribuinte) {
   const url = `${BLING_API}/contatos/${idContato}`;
-  const payload = {
-    ...contatoCompleto,
-    ie: ie,
-    contribuinte: contribuinte
-  };
+  const payload = { ...contatoCompleto, ie, contribuinte };
   await fetchComRetry(
     url,
     {
@@ -145,7 +151,7 @@ async function atualizarIEContato(token, idContato, contatoCompleto, ie, contrib
     },
     `atualizar IE contato=${idContato}`
   );
-  console.log(`[blingApi] Contato ${idContato} IE atualizada para "${ie}" contribuinte=${contribuinte}`);
+  console.log(`[blingApi] Contato ${idContato} IE="${ie}" contribuinte=${contribuinte}`);
 }
 
 // ── ViaCEP ────────────────────────────────────────────────────────
@@ -176,10 +182,7 @@ async function getIEPorCNPJ(cnpj, uf) {
   try {
     const url = `https://www.sintegraws.com.br/api/v1/execute-api.php?token=${SINTEGRA_TOKEN}&cnpj=${cnpjLimpo}&plugin=ST`;
     const resp = await fetch(url);
-    if (!resp.ok) {
-      console.log(`[blingApi] SintegraWS HTTP ${resp.status}`);
-      return null;
-    }
+    if (!resp.ok) { console.log(`[blingApi] SintegraWS HTTP ${resp.status}`); return null; }
     const data = await resp.json();
     console.log(`[blingApi] SintegraWS CNPJ=${cnpjLimpo} UF=${uf}:`, JSON.stringify(data).slice(0, 200));
 
@@ -192,12 +195,10 @@ async function getIEPorCNPJ(cnpj, uf) {
         return { ie: 'ISENTO', contribuinte: 2 };
       }
     }
-
     if (data && data.inscricao_estadual) {
       if (data.inscricao_estadual === 'ISENTO') return { ie: 'ISENTO', contribuinte: 2 };
       return { ie: data.inscricao_estadual, contribuinte: 1 };
     }
-
     return null;
   } catch (e) {
     console.error('[blingApi] Erro SintegraWS:', e.message);
@@ -208,6 +209,6 @@ async function getIEPorCNPJ(cnpj, uf) {
 module.exports = {
   sleep,
   getNFsParaCorrigir, getNFDetalhe, salvarNF, enviarNF,
-  getContato, atualizarCidadeContato, atualizarIEContato,
+  getContato, atualizarIEContato,
   getCidadePorCEP, getIEPorCNPJ
 };
