@@ -5,7 +5,7 @@ const cron  = require('node-cron');
 const { garantirToken, renovarToken, gerarTokenInicial } = require('./tokenManager');
 const {
   sleep,
-  getNFsParaCorrigir, getNFDetalhe, salvarNF, enviarNF,
+  getNFsParaCorrigir, getNFDetalhe, enviarNF,
   getContato, atualizarCidadeContato, atualizarIEContato,
   getCidadePorCEP, getIEPorCNPJ
 } = require('./blingApi');
@@ -119,8 +119,6 @@ async function corrigirNFsPendentes() {
 
         // ── Salvar e reenviar NF se corrigiu algo ─────────────
         if (corrigiu) {
-          await sleep(500);
-          await salvarNF(token, nf.id, detalhe);
           await sleep(500);
           await enviarNF(token, nf.id);
           corrigidas++;
