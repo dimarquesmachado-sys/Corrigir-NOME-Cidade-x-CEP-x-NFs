@@ -73,7 +73,12 @@ async function corrigirNFsPendentes() {
 
         const detalhe = await getNFDetalhe(token, nf.id);
         if (!detalhe) { ignoradas++; continue; }
-
+        
+// Se tem chave de acesso, NF já foi autorizada — ignora
+if (detalhe.chaveAcesso && detalhe.chaveAcesso.length > 0) {
+  ignoradas++;
+  continue;
+}
         const idContato = detalhe.contato?.id;
         const cep = detalhe.contato?.endereco?.cep;
         const uf = detalhe.contato?.endereco?.uf;
