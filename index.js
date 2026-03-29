@@ -44,7 +44,6 @@ let _rodando = false;
 async function corrigirNFsPendentes() {
   if (_rodando) { console.log('[corrigir] Já em execução — pulando'); return; }
   _rodando = true;
-  const _nfsProcessadas = new Set();
 
   try {
     let token;
@@ -56,7 +55,6 @@ async function corrigirNFsPendentes() {
     }
 
     const nfs = await getNFsParaCorrigir(token);
-    console.log('[debug] IDs na listagem:', nfs.map(n => `${n.id}(sit=${n.situacao})`).join(', '));
     console.log(`[corrigir] ${nfs.length} NFs para verificar`);
 
     let corrigidas = 0, ignoradas = 0, erros = 0;
@@ -64,12 +62,6 @@ async function corrigirNFsPendentes() {
 
     for (const nf of nfs) {
       try {
-        // Já processada nesta sessão — pula
-        if (_nfsProcessadas.has(nf.id)) {
-          ignoradas++;
-          continue;
-        }
-
         // Filtra NFs com menos de 5 minutos
         const dataEmissao = new Date(nf.dataEmissao || nf.data);
         const minutos = (agora - dataEmissao) / 1000 / 60;
@@ -80,11 +72,10 @@ async function corrigirNFsPendentes() {
         }
 
         const detalhe = await getNFDetalhe(token, nf.id);
-        if (!detalhe) { _nfsProcessadas.add(nf.id); ignoradas++; continue; }
+        if (!detalhe) { ignoradas++; continue; }
 
-        // Se tem chave de acesso, NF já foi autorizada — ignora e marca como processada
-        if (detalhe.chaveAcesso && detalhe.chaveAcesso.length > 0) {
-          _nfsProcessadas.add(nf.id);
+        // Se NF já autorizada (situacao=2) — ignora
+        if (detalhe.situacao === 2) {
           ignoradas++;
           continue;
         }
@@ -94,11 +85,20 @@ async function corrigirNFsPendentes() {
         const uf = detalhe.contato?.endereco?.uf;
         const cnpj = detalhe.contato?.numeroDocumento || '';
         const ie = detalhe.contato?.ie || '';
+        const endereco = detalhe.contato?.endereco?.endereco || '';
         const isPJ = cnpj.replace(/\D/g, '').length === 14;
 
-        console.log(`[corrigir] NF ${nf.id} | sit=${nf.situacao} | PJ=${isPJ} | IE="${ie}" | CEP=${cep} | UF=${uf}`);
+        console.log(`[corrigir] NF ${nf.id} | sit=${detalhe.situacao} | PJ=${isPJ} | IE="${ie}" | CEP=${cep} | UF=${uf}`);
 
         let corrigiu = false;
+
+        // ── Corrigir endereço curto (menos de 2 caracteres) ──
+        if (endereco.length < 2) {
+          const novoEndereco = 'Endereço ' + endereco;
+          console.log(`[corrigir] NF ${nf.id} | endereço curto "${endereco}" -> "${novoEndereco}"`);
+          detalhe.contato.endereco.endereco = novoEndereco;
+          corrigiu = true;
+        }
 
         // ── Corrigir cidade na própria NF ────────────────────
         if (cep) {
@@ -111,24 +111,28 @@ async function corrigirNFsPendentes() {
           }
         }
 
-        // ── Corrigir IE no contato (só PJ sem IE) ─────────────
+        // ── Corrigir IE (só PJ sem IE) ────────────────────────
         if (isPJ && !ie && uf && idContato) {
           const cnpjLimpo = cnpj.replace(/\D/g, '');
           const resultado = await getIEPorCNPJ(cnpjLimpo, uf);
           if (resultado) {
             console.log(`[corrigir] NF ${nf.id} | IE: "${resultado.ie}" contribuinte=${resultado.contribuinte}`);
+            // Atualiza contato no Bling
             const contato = await getContato(token, idContato);
             if (contato) {
               await atualizarIEContato(token, idContato, contato, resultado.ie, resultado.contribuinte);
-              corrigiu = true;
             }
+            // Atualiza também no detalhe da NF para o PUT
+            detalhe.contato.ie = resultado.ie;
+            detalhe.contato.contribuinte = resultado.contribuinte;
+            corrigiu = true;
             await sleep(300);
           } else {
             console.log(`[corrigir] NF ${nf.id} | IE não encontrada — intervenção manual`);
           }
         }
 
-        // ── Salvar NF (com intermediador) e enviar ────────────
+        // ── Salvar NF e enviar ─────────────────────────────────
         if (corrigiu) {
           await sleep(300);
           await salvarNF(token, nf.id, detalhe);
@@ -138,9 +142,6 @@ async function corrigirNFsPendentes() {
         } else {
           ignoradas++;
         }
-
-        // Marca como processada para não repetir
-        _nfsProcessadas.add(nf.id);
 
       } catch (e) {
         if (e.code === 401 || e.message === 'TOKEN_EXPIRADO') token = await renovarToken();
