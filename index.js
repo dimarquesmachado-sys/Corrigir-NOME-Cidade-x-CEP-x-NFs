@@ -5,7 +5,7 @@ const cron  = require('node-cron');
 const { garantirToken, renovarToken, gerarTokenInicial } = require('./tokenManager');
 const {
   sleep,
-  getNFsParaCorrigir, getNFDetalhe, enviarNF,
+  getNFsParaCorrigir, getNFDetalhe, salvarNF, enviarNF,
   getContato, atualizarCidadeContato, atualizarIEContato,
   getCidadePorCEP, getIEPorCNPJ
 } = require('./blingApi');
@@ -97,7 +97,6 @@ async function corrigirNFsPendentes() {
           if (novaCidade && novaCidade.toLowerCase() !== cidadeAtual.toLowerCase()) {
             console.log(`[corrigir] NF ${nf.id} | CEP ${cep} | "${cidadeAtual}" -> "${novaCidade}"`);
             await atualizarCidadeContato(token, idContato, contato, novaCidade);
-            // Atualiza objeto local para usar na próxima etapa
             contato.endereco = { ...contato.endereco, municipio: novaCidade };
             corrigiu = true;
             await sleep(300);
@@ -109,17 +108,19 @@ async function corrigirNFsPendentes() {
           const cnpjLimpo = cnpj.replace(/\D/g, '');
           const resultado = await getIEPorCNPJ(cnpjLimpo, uf);
           if (resultado) {
-            console.log(`[corrigir] NF ${nf.id} | IE encontrada: "${resultado.ie}" contribuinte=${resultado.contribuinte}`);
+            console.log(`[corrigir] NF ${nf.id} | IE: "${resultado.ie}" contribuinte=${resultado.contribuinte}`);
             await atualizarIEContato(token, idContato, contato, resultado.ie, resultado.contribuinte);
             corrigiu = true;
             await sleep(300);
           } else {
-            console.log(`[corrigir] NF ${nf.id} | IE não encontrada no SintegraWS — intervenção manual necessária`);
+            console.log(`[corrigir] NF ${nf.id} | IE não encontrada — intervenção manual necessária`);
           }
         }
 
-        // ── Reenviar NF se corrigiu algo ──────────────────────
+        // ── Salvar e reenviar NF se corrigiu algo ─────────────
         if (corrigiu) {
+          await sleep(500);
+          await salvarNF(token, nf.id, detalhe);
           await sleep(500);
           await enviarNF(token, nf.id);
           corrigidas++;

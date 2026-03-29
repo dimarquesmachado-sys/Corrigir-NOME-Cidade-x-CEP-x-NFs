@@ -46,7 +46,6 @@ async function getNFsParaCorrigir(token) {
       `listar NFs situacao=${sit}`
     );
     const data = await resp.json();
-    // Filtra apenas NFs das últimas 24h
     const recentes = (data.data || []).filter(nf => {
       const dataEmissao = new Date(nf.dataEmissao || nf.data);
       return dataEmissao >= ontem;
@@ -66,6 +65,20 @@ async function getNFDetalhe(token, idNF) {
   );
   const data = await resp.json();
   return data.data || null;
+}
+
+async function salvarNF(token, idNF, detalhe) {
+  const url = `${BLING_API}/nfe/${idNF}`;
+  await fetchComRetry(
+    url,
+    {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(detalhe)
+    },
+    `salvar NF=${idNF}`
+  );
+  console.log(`[blingApi] NF ${idNF} salva`);
 }
 
 async function enviarNF(token, idNF) {
@@ -170,7 +183,6 @@ async function getIEPorCNPJ(cnpj, uf) {
     const data = await resp.json();
     console.log(`[blingApi] SintegraWS CNPJ=${cnpjLimpo} UF=${uf}:`, JSON.stringify(data).slice(0, 200));
 
-    // Busca IE para o estado correto
     if (data && data.inscricoes_estaduais) {
       const ieEstado = data.inscricoes_estaduais.find(i => i.uf === uf);
       if (ieEstado && ieEstado.inscricao_estadual && ieEstado.inscricao_estadual !== 'ISENTO') {
@@ -181,7 +193,6 @@ async function getIEPorCNPJ(cnpj, uf) {
       }
     }
 
-    // Fallback: campo direto
     if (data && data.inscricao_estadual) {
       if (data.inscricao_estadual === 'ISENTO') return { ie: 'ISENTO', contribuinte: 2 };
       return { ie: data.inscricao_estadual, contribuinte: 1 };
@@ -196,7 +207,7 @@ async function getIEPorCNPJ(cnpj, uf) {
 
 module.exports = {
   sleep,
-  getNFsParaCorrigir, getNFDetalhe, enviarNF,
+  getNFsParaCorrigir, getNFDetalhe, salvarNF, enviarNF,
   getContato, atualizarCidadeContato, atualizarIEContato,
   getCidadePorCEP, getIEPorCNPJ
 };
