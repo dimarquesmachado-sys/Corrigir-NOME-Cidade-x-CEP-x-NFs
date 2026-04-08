@@ -2,7 +2,7 @@
 
 const fetch = require('node-fetch');
 
-const BLING_API = 'https://www.bling.com.br/Api/v3';
+const BLING_API = 'https://api.bling.com.br/Api/v3';
 const PAUSA_MS = parseInt(process.env.PAUSA_MS || '700');
 const SINTEGRA_TOKEN = process.env.SINTEGRA_TOKEN || '';
 const INTERMEDIADOR_CNPJ = process.env.INTERMEDIADOR_CNPJ || '03007331000141';
