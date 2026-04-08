@@ -63,8 +63,28 @@ async function renovarToken() {
   _renovando = true;
   try {
     console.log('[tokenManager] Renovando token...');
-    const { refresh_token } = lerTokens();
+    let { refresh_token } = lerTokens();
+
+    // Se não tem refresh_token, busca automaticamente do serviço mover-pedidos
+    if (!refresh_token) {
+      console.log('[tokenManager] refresh_token ausente — buscando do serviço mover-pedidos...');
+      try {
+        const respCopiar = await fetch('https://mover-pedidos-aguardando-x-atendido.onrender.com/copiar-tokens', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        if (respCopiar.ok) {
+          console.log('[tokenManager] Tokens copiados do mover-pedidos ✓');
+          const tokens = lerTokens();
+          refresh_token = tokens.refresh_token;
+        }
+      } catch (eCopiar) {
+        console.error('[tokenManager] Erro ao copiar tokens:', eCopiar.message);
+      }
+    }
+
     if (!refresh_token) throw new Error('refresh_token ausente — rode /setup primeiro');
+
     const redirect_uri = process.env.BLING_REDIRECT_URI || '';
     const data = await postOAuth({ grant_type: 'refresh_token', refresh_token, redirect_uri });
     salvarTokens(data.access_token, data.refresh_token);
