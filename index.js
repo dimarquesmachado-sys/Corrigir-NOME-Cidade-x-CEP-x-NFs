@@ -222,6 +222,23 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (method === 'GET' && url.startsWith('/debug/cep/')) {
+    const partes = url.split('/');
+    const cep = partes[partes.length - 1];
+    try {
+      const resultado = await getCidadePorCEP(cep);
+      return json(res, 200, {
+        cep,
+        resultado,
+        observacao: resultado
+          ? 'Este é o que seria gravado na NF (municipio + uf)'
+          : 'CEP inválido ou ViaCEP não retornou dados'
+      });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   json(res, 404, { error: 'not found' });
 });
 
