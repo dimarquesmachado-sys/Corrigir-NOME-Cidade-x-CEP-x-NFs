@@ -27,17 +27,41 @@ async function esperarSlot(minMs) {
 }
 
 async function fetchComRetry(url, options, ctx, tentativas = 4) {
+  let ultimoErro = null;
+
   for (let t = 1; t <= tentativas; t++) {
     await esperarSlot(options.method === 'GET' || !options.method ? 300 : PAUSA_MS);
-    const resp = await fetch(url, options);
+
+    let resp;
+    try {
+      resp = await fetch(url, options);
+    } catch (e) {
+      // Erro de rede (DNS, timeout, ECONNRESET, etc) — registra e tenta de novo
+      ultimoErro = e;
+      console.error(`[blingApi] Erro de rede em ${ctx} (tentativa ${t}/${tentativas}):`, e.message);
+      if (t === tentativas) throw new Error(`API Bling (${ctx}) erro de rede: ${e.message}`);
+      await sleep(1000 * t);
+      continue;
+    }
+
     if (resp.status >= 200 && resp.status < 300) return resp;
-    if (resp.status === 429) { await sleep(2000 * t); continue; }
     if (resp.status === 401) throw Object.assign(new Error('TOKEN_EXPIRADO'), { code: 401 });
+
+    if (resp.status === 429) {
+      console.warn(`[blingApi] HTTP 429 em ${ctx} (tentativa ${t}/${tentativas}) — aguardando`);
+      if (t === tentativas) throw new Error(`API Bling (${ctx}) HTTP 429 após ${tentativas} tentativas`);
+      await sleep(2000 * t);
+      continue;
+    }
+
     const txt = await resp.text();
     console.error(`[blingApi] HTTP ${resp.status} em ${ctx}:`, txt.slice(0, 300));
     if (t === tentativas) throw new Error(`API Bling (${ctx}) HTTP ${resp.status}`);
     await sleep(1000 * t);
   }
+
+  // Fallback defensivo — não deveria chegar aqui, mas garante que nunca retornamos undefined
+  throw new Error(`API Bling (${ctx}) falhou após ${tentativas} tentativas${ultimoErro ? ': ' + ultimoErro.message : ''}`);
 }
 
 async function getNFsParaCorrigir(token) {
