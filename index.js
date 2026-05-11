@@ -100,17 +100,18 @@ async function corrigirNFsPendentes() {
           corrigiu = true;
         }
 
-        // ── Corrigir cidade na própria NF ────────────────────
-       // ── Corrigir cidade na própria NF ────────────────────
-if (cep) {
-  const novaCidade = await getCidadePorCEP(cep);
-  if (novaCidade) {
-    const cidadeAtual = detalhe.contato?.endereco?.municipio || '';
-    console.log(`[corrigir] NF ${nf.id} | cidade "${cidadeAtual}" -> "${novaCidade}" (recalcula IBGE)`);
-    detalhe.contato.endereco.municipio = novaCidade;
-    corrigiu = true;
-  }
-}
+        // ── Corrigir cidade e UF na própria NF ───────────────
+        if (cep) {
+          const resCidade = await getCidadePorCEP(cep);
+          if (resCidade) {
+            const cidadeAtual = detalhe.contato?.endereco?.municipio || '';
+            const ufAtual = detalhe.contato?.endereco?.uf || '';
+            console.log(`[corrigir] NF ${nf.id} | "${cidadeAtual}|${ufAtual}" -> "${resCidade.municipio}|${resCidade.uf}"`);
+            detalhe.contato.endereco.municipio = resCidade.municipio;
+            detalhe.contato.endereco.uf = resCidade.uf;
+            corrigiu = true;
+          }
+        }
 
         // ── Corrigir IE (só PJ sem IE) ────────────────────────
         if (isPJ && !ie && uf && idContato) {
