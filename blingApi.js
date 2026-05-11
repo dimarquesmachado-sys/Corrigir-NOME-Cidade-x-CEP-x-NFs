@@ -8,14 +8,11 @@ const SINTEGRA_TOKEN = process.env.SINTEGRA_TOKEN || '';
 const INTERMEDIADOR_CNPJ = process.env.INTERMEDIADOR_CNPJ || '03007331000141';
 const INTERMEDIADOR_NOME = process.env.INTERMEDIADOR_NOME || 'MAGAZINEGIRASSOL';
 
-// Mapa de correções manuais: chave = "CidadeViaCEP|UF", valor = { municipio, uf }
-// Usar quando ViaCEP retorna nome/estado diferente do aceito pelo Bling
+// Mapa de correções manuais: chave = "cidade|uf" em minúsculo
+// Usar quando ViaCEP retorna nome diferente do aceito pelo Bling
 const CORRECOES_CIDADE = {
-  "Sant'Ana do Livramento|RS": { municipio: "Sant'Ana do Livramento", uf: 'RS' },
-  'Santana do Livramento|RS':  { municipio: "Sant'Ana do Livramento", uf: 'RS' },
   "sant'ana do livramento|rs": { municipio: "Sant'Ana do Livramento", uf: 'RS' },
   'santana do livramento|rs':  { municipio: "Sant'Ana do Livramento", uf: 'RS' },
-};
 };
 
 let _ultimaReq = 0;
@@ -173,14 +170,10 @@ async function getCidadePorCEP(cep) {
     const uf = data.uf || null;
     if (!municipio || !uf) return null;
 
-    // Verifica correção manual pela chave "cidade|UF"
+    // Verifica correção manual pela chave "cidade|uf" em minúsculo
     const chave = `${municipio}|${uf}`.toLowerCase();
-if (CORRECOES_CIDADE[chave]) {
-  console.log(`[blingApi] Correção manual: "${chave}" -> ${JSON.stringify(CORRECOES_CIDADE[chave])}`);
-  return CORRECOES_CIDADE[chave];
-}
-    {
-      console.log(`[blingApi] Correção manual aplicada: "${chave}" -> ${JSON.stringify(CORRECOES_CIDADE[chave])}`);
+    if (CORRECOES_CIDADE[chave]) {
+      console.log(`[blingApi] Correção manual: "${chave}" -> ${JSON.stringify(CORRECOES_CIDADE[chave])}`);
       return CORRECOES_CIDADE[chave];
     }
 
