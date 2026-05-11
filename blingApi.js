@@ -8,6 +8,12 @@ const SINTEGRA_TOKEN = process.env.SINTEGRA_TOKEN || '';
 const INTERMEDIADOR_CNPJ = process.env.INTERMEDIADOR_CNPJ || '03007331000141';
 const INTERMEDIADOR_NOME = process.env.INTERMEDIADOR_NOME || 'MAGAZINEGIRASSOL';
 
+// Mapa de correções manuais de cidades
+// Usar quando ViaCEP retorna nome diferente do aceito pelo Bling
+const CORRECOES_CIDADE = {
+  'Santana do Livramento': "Sant'Ana do Livramento",
+};
+
 let _ultimaReq = 0;
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -74,7 +80,7 @@ async function salvarNF(token, idNF, detalhe) {
       cnpj: INTERMEDIADOR_CNPJ,
       nomeUsuario: INTERMEDIADOR_NOME
     },
-    parcelas: [] // Remove parcelas para evitar erro de divergência
+    parcelas: []
   };
 
   const url = `${BLING_API}/nfe/${idNF}`;
@@ -158,7 +164,9 @@ async function getCidadePorCEP(cep) {
     if (!resp.ok) return null;
     const data = await resp.json();
     if (data.erro) return null;
-    return data.localidade || null;
+    const cidade = data.localidade || null;
+    // Aplica correção manual se existir
+    return cidade ? (CORRECOES_CIDADE[cidade] || cidade) : null;
   } catch (e) {
     console.error('[blingApi] Erro ao buscar CEP:', e.message);
     return null;
