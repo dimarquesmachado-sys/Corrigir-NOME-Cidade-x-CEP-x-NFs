@@ -13,6 +13,9 @@ const INTERMEDIADOR_NOME = process.env.INTERMEDIADOR_NOME || 'MAGAZINEGIRASSOL';
 const CORRECOES_CIDADE = {
   "Sant'Ana do Livramento|RS": { municipio: "Sant'Ana do Livramento", uf: 'RS' },
   'Santana do Livramento|RS':  { municipio: "Sant'Ana do Livramento", uf: 'RS' },
+  "sant'ana do livramento|rs": { municipio: "Sant'Ana do Livramento", uf: 'RS' },
+  'santana do livramento|rs':  { municipio: "Sant'Ana do Livramento", uf: 'RS' },
+};
 };
 
 let _ultimaReq = 0;
