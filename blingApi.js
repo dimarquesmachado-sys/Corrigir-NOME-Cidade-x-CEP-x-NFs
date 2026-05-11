@@ -174,8 +174,12 @@ async function getCidadePorCEP(cep) {
     if (!municipio || !uf) return null;
 
     // Verifica correção manual pela chave "cidade|UF"
-    const chave = `${municipio}|${uf}`;
-    if (CORRECOES_CIDADE[chave]) {
+    const chave = `${municipio}|${uf}`.toLowerCase();
+if (CORRECOES_CIDADE[chave]) {
+  console.log(`[blingApi] Correção manual: "${chave}" -> ${JSON.stringify(CORRECOES_CIDADE[chave])}`);
+  return CORRECOES_CIDADE[chave];
+}
+    {
       console.log(`[blingApi] Correção manual aplicada: "${chave}" -> ${JSON.stringify(CORRECOES_CIDADE[chave])}`);
       return CORRECOES_CIDADE[chave];
     }
